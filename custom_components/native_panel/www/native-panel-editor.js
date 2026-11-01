@@ -279,7 +279,7 @@ export function filterEntities(entities, room, system) {
 }
 export function securityCandidates(entities) { return entities.filter(entity=>entity.security_eligible===true); }
 export function securitySensorGrid(count) {
-  const columns=count<=6?1:2,rows=Math.max(1,Math.ceil(Math.min(count,16)/columns)),step=Math.floor((count>12?304:234)/rows),font=count<=4?20:14;
+  const columns=count<=6?1:2,rows=Math.max(1,Math.ceil(Math.min(count,16)/columns)),step=Math.floor((count>12?304:234)/rows),font=14;
   return {columns,rows,step,font,columnWidth:columns===1?384:187,badgeWidth:columns===1?128:80,nameHeight:Math.min(step-4,font===20?44:32),stateHeight:Math.min(30,step-6)};
 }
 export function previewGeometry(menu) {
@@ -1328,8 +1328,8 @@ export class NativePanelEditor extends BaseElement {
     let controls=more?this._previewButton(`Three-dot menu for ${entity.label}`,307,8,48,48,{icon:"more",className:"native-more"}):"";
     if(toggle&&height>100)controls+=`<svg class="native-power" style="left:14px;top:${height-42}px" width="24" height="24" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v9M6.5 6.5a8 8 0 1 0 11 0" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>`;
     if(domain==="cover") {
-      const position=Boolean(features&4),actions=position?["0%","25%","50%","75%","100%",...(features&8?["Stop"]:[])]:[...(features&1?["Open"]:[]),...(features&8?["Stop"]:[]),...(features&2?["Close"]:[])],gap=position?5:10,width=Math.floor((349-gap*(actions.length-1))/Math.max(1,actions.length));
-      controls+=actions.map((label,i)=>this._previewButton(label,10+i*(width+gap),actionY,width,44,{style:position?"letter-spacing:-1px;":""})).join("");
+      const position=Boolean(features&4),actions=position?["Closed","25%","50%","75%","Open",...(features&8?["Stop"]:[])]:[...(features&1?["Open"]:[]),...(features&8?["Stop"]:[]),...(features&2?["Close"]:[])],gap=position?5:10,width=Math.floor((349-gap*(actions.length-1))/Math.max(1,actions.length));
+      controls+=actions.map((label,i)=>this._previewButton(label,10+i*(width+gap),actionY,width,44,{style:position?"font-size:14px;font-weight:400;letter-spacing:-1px;":""})).join("");
     } else if(explicit)controls+=this._previewButton(({scene:"Activate",script:"Run",button:"Press",lock:"Lock",camera:"View live camera"})[domain],domain==="camera"?10:190,actionY,domain==="camera"?349:166,44);
     let titleWidth=action?285:341,stateX=14,stateY=action?(compact?46:54):(compact?48:height>=209?90:70),stateWidth=action?285:341,stateHeight=action?34:44,stateFont=!action||height>=209?24:20;
     if(explicit&&compact){titleWidth=156;stateX=178;stateY=8;stateWidth=170;stateHeight=28;}
@@ -1339,25 +1339,20 @@ export class NativePanelEditor extends BaseElement {
       text=`${current} / ${target}`;
     }
 
-    const tileTarget=toggle||["climate","alarm_control_panel"].includes(domain)?`<button class="native-tile-target" disabled aria-label="${escapeHTML(toggle?`Toggle ${entity.label} (preview only)`:`Open ${entity.label} controls (preview only)`)}"></button>`:"";
+    const tileTarget=toggle||["climate","alarm_control_panel"].includes(domain)||domain==="cover"&&width<369?`<button class="native-tile-target" disabled aria-label="${escapeHTML(toggle?`Toggle ${entity.label} (preview only)`:`Open ${entity.label} controls (preview only)`)}"></button>`:"";
     if(width===height&&width<242) {
-      const cover=domain==="cover",font=width>=179?20:14,titleHeight=font===20?44:32;
-      if(cover&&width<180)text=raw[0].toUpperCase()+raw.slice(1);
-      let buttons=more?this._previewButton(`Three-dot menu for ${entity.label}`,width-48,cover?0:height-48,44,44,{icon:"more",className:"native-more"}):"";
+      const font=width>=179?20:14,titleHeight=font===20?44:32;
+      if(domain==="cover"&&width<180)text=raw[0].toUpperCase()+raw.slice(1);
+      let buttons=more?this._previewButton(`Three-dot menu for ${entity.label}`,width-48,height-48,44,44,{icon:"more",className:"native-more"}):"";
       if(toggle)buttons+=`<span style="position:absolute;left:10px;bottom:12px;font-size:24px">⏻</span>`;
-      if(cover){const position=Boolean(features&4),actions=position?["0%","25%","50%","75%","100%",...(features&8?["Stop"]:[])]:[...(features&1?["Open"]:[]),...(features&8?["Stop"]:[]),...(features&2?["Close"]:[])];buttons+=actions.map((label,i)=>this._previewButton(label,(width-132)/2+(i%3)*44,height-(position?92:48)+Math.floor(i/3)*44,44,44,{style:"font-size:14px;padding:0;"})).join("");}
-      else if(explicit)buttons+=this._previewButton(({scene:"Activate",script:"Run",button:"Press",lock:"Lock",camera:"Camera"})[domain],8,height-48,width-16,44);
-      return `<article class="native-card ${active?"active":""} ${offline?"unavailable":""}" style="left:${x}px;top:${y}px;width:${width}px;height:${height}px" data-preview-entity="${escapeHTML(entity.entity_id)}">${tileTarget}<h3 style="left:8px;top:${cover?2:6}px;width:${width-(cover?56:16)}px;height:${cover?24:titleHeight}px;line-height:${cover?14:font===20?22:16}px;font-size:${cover?14:font}px;white-space:normal;overflow-wrap:anywhere">${escapeHTML(entity.label)}</h3><span class="native-card-state ${badge?`native-status-badge ${badge}`:""}" style="left:8px;top:${cover?26:titleHeight+10}px;width:${width-(cover?56:16)}px;height:${cover?16:24}px;line-height:${cover?16:24}px;font-size:${cover?14:readonly?20:font}px">${escapeHTML(text)}</span>${buttons}</article>`;
+      if(explicit)buttons+=this._previewButton(({scene:"Activate",script:"Run",button:"Press",lock:"Lock",camera:"Camera"})[domain],8,height-48,width-16,44);
+      return `<article class="native-card ${active?"active":""} ${offline?"unavailable":""}" style="left:${x}px;top:${y}px;width:${width}px;height:${height}px" data-preview-entity="${escapeHTML(entity.entity_id)}">${tileTarget}<h3 style="left:8px;top:6px;width:${width-16}px;height:${titleHeight}px;line-height:${font===20?22:16}px;font-size:${font}px;white-space:normal;overflow-wrap:anywhere">${escapeHTML(entity.label)}</h3><span class="native-card-state ${badge?`native-status-badge ${badge}`:""}" style="left:8px;top:${titleHeight+10}px;width:${width-16}px;height:24px;line-height:24px;font-size:${readonly?20:font}px;font-weight:400">${escapeHTML(text)}</span>${buttons}</article>`;
     }
     if(width<369) {
       const actionY=height-52,inner=width-20;
       controls=more?this._previewButton(`Three-dot menu for ${entity.label}`,width-62,8,48,48,{icon:"more",className:"native-more"}):"";
       if(toggle)controls+=`<svg class="native-power" style="left:14px;top:${height-42}px" width="24" height="24" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v9M6.5 6.5a8 8 0 1 0 11 0" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>`;
-      if(domain==="cover") {
-        const position=Boolean(features&4),actions=position?["0%","25%","50%","75%","100%"]:[...(features&1?["Open"]:[]),...(features&8?["Stop"]:[]),...(features&2?["Close"]:[])];
-        const actionWidth=position?44:Math.floor((inner-10*(actions.length-1))/Math.max(1,actions.length)),step=position?44:actionWidth+10;
-        controls+=actions.map((label,i)=>this._previewButton(label,(position?11:10)+i*step,actionY,actionWidth,44,{style:"font-size:14px;padding:0;"})).join("");
-      } else if(explicit)controls+=this._previewButton(({scene:"Activate",script:"Run",button:"Press",lock:"Lock",camera:"View live camera"})[domain],domain==="camera"?10:width-179,actionY,domain==="camera"?inner:166,44);
+      if(explicit)controls+=this._previewButton(({scene:"Activate",script:"Run",button:"Press",lock:"Lock",camera:"View live camera"})[domain],domain==="camera"?10:width-179,actionY,domain==="camera"?inner:166,44);
       const font=entity.label.length>32?14:20;
       return `<article class="native-card native-card-narrow ${active?"active":""} ${offline?"unavailable":""}" style="left:${x}px;top:${y}px;width:${width}px;height:${height}px" data-preview-entity="${escapeHTML(entity.entity_id)}">${tileTarget}<h3 style="left:14px;top:8px;width:${width-(more?84:28)}px;height:${font===14?32:44}px;line-height:${font===14?16:22}px;font-size:${font}px;white-space:normal;overflow-wrap:anywhere">${escapeHTML(entity.label)}</h3><span class="native-card-state ${badge?`native-status-badge ${badge}`:""}" style="left:14px;top:58px;width:${width-28}px;height:${readonly?44:24}px;line-height:24px;font-size:${readonly?24:20}px">${escapeHTML(text)}</span>${controls}</article>`;
     }
@@ -1391,7 +1386,7 @@ export class NativePanelEditor extends BaseElement {
         const openingState=opening||id.startsWith("cover."),badge=openingState&&["on","off","open","closed"].includes(value)?(["on","open"].includes(value)?"open":"closed"):"";
         const display=openingState&&["on","off","open","closed"].includes(value)?(["on","open"].includes(value)?"Open":"Closed"):label;
         const x=364+(i%grid.columns)*197,y=108+Math.floor(i/grid.columns)*grid.step;
-        return `<span class="native-sensor-name" style="top:${y}px;left:${x}px;width:${grid.columnWidth-grid.badgeWidth-8}px;height:${grid.nameHeight}px;font-size:${grid.font}px;line-height:${grid.font===20?22:16}px;white-space:${grid.font===20?"nowrap":"normal"};overflow-wrap:anywhere">${escapeHTML(c.entities.find(e=>e.entity_id===id)?.label||sensor.name||id)}</span><span class="native-sensor-value ${badge?`native-status-badge ${badge}`:value==="on"?"active":""}" style="top:${y}px;left:${x+grid.columnWidth-grid.badgeWidth}px;width:${grid.badgeWidth}px;height:${grid.stateHeight}px;font-size:${grid.font}px;line-height:${grid.stateHeight}px">${escapeHTML(display)}</span>`;
+        return `<span class="native-sensor-name" style="top:${y}px;left:${x}px;width:${grid.columnWidth-grid.badgeWidth-8}px;height:${grid.nameHeight}px;font-size:${grid.font}px;font-weight:400;line-height:${grid.font===20?22:16}px;white-space:${grid.font===20?"nowrap":"normal"};overflow-wrap:anywhere">${escapeHTML(c.entities.find(e=>e.entity_id===id)?.label||sensor.name||id)}</span><span class="native-sensor-value ${badge?`native-status-badge ${badge}`:value==="on"?"active":""}" style="top:${y}px;left:${x+grid.columnWidth-grid.badgeWidth}px;width:${grid.badgeWidth}px;height:${grid.stateHeight}px;font-size:${grid.font}px;font-weight:400;line-height:${grid.stateHeight}px">${escapeHTML(display)}</span>`;
       }).join("");
       if(pages>1)body+=this._previewButton("Previous",364,374,104,48,{action:"preview-sensor-page",value:"-1",disabled:this._sensorPreviewPage===0})+`<span class="native-page-count" style="left:480px;top:386px;width:136px">${this._sensorPreviewPage+1} / ${pages}</span>`+this._previewButton("Next",644,374,104,48,{action:"preview-sensor-page",value:"1",disabled:this._sensorPreviewPage===pages-1});
     }
@@ -1481,6 +1476,6 @@ const CSS = `
 
 `;
 if(globalThis.customElements) {
-  if(!customElements.get("native-panel-editor-0-7-14"))customElements.define("native-panel-editor-0-7-14",NativePanelEditor);
+  if(!customElements.get("native-panel-editor-0-7-15"))customElements.define("native-panel-editor-0-7-15",NativePanelEditor);
   if(!customElements.get("native-panel-editor"))customElements.define("native-panel-editor",class extends NativePanelEditor {});
 }
