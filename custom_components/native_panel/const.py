@@ -1,6 +1,6 @@
 """Constants for Native Home Panel."""
 DOMAIN = "native_panel"
-VERSION = "0.7.11"
+VERSION = "0.7.12"
 MAX_JSON = 65536
 MAX_UPLOAD = 4 * 1024 * 1024
 MAX_PANELS = 16

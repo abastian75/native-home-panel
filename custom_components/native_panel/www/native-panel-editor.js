@@ -499,7 +499,7 @@ export class NativePanelEditor extends BaseElement {
       else if(e.target.id==="room-system-name"){this._roomSystemName=e.target.value;this._saveDraft();}
       else if(e.target.id==="new-system-name"&&this._systemAdd){this._systemAdd.name=e.target.value;this._saveDraft();}
       else if(e.target.id==="new-room-name"&&this._roomWizard){this._roomWizard.name=e.target.value;this._roomWizard.step="choose";this._saveDraft();}
-      else if (e.target.id === "entity-search") { this._search = e.target.value; this._renderCandidates();this._saveDraft(); }
+      else if (e.target.id === "entity-search") { this._queueCandidateSearch(e.target.value);this._saveDraft(); }
       else if (e.target.id === "security-search") { this._securitySearch = e.target.value; this._renderSecuritySensors(); }
       else if (e.target.dataset.delayAmount!==undefined) {
         this._storeDelayAmount(e.target); this._dirty=true; this._updateDraftStatus();
@@ -519,7 +519,7 @@ export class NativePanelEditor extends BaseElement {
     else if (this._loaded) this._updateLiveStates();
   }
   connectedCallback() { this._render(); if (this._hass && !this._loaded) this._load(); }
-  disconnectedCallback() { this._resize?.disconnect(); clearInterval(this._pairTimer); }
+  disconnectedCallback() { this._resize?.disconnect(); clearInterval(this._pairTimer);clearTimeout(this._candidateTimer); }
   async _call(type, args = {}) {
     if (!this._hass?.callWS) throw new Error("Connect to Home Assistant to configure a panel.");
     return this._hass.callWS({type:`native_panel/${type}`,...args});
@@ -577,7 +577,7 @@ export class NativePanelEditor extends BaseElement {
     const legacy=!Object.hasOwn(panel?.config||{},"rooms")&&!Object.hasOwn(panel?.config||{},"systems");
     this._config = normalizeConfig(panel?.config); this._config.name = panel?.name || this._config.name;
     this._dirty = false; this._room = ""; this._system = ""; this._previewPage=0; this._sensorPreviewPage=0;
-    this._wizardSelection = new Set(this._config.entities.map(e => e.entity_id));
+    this._candidateLimit=60;clearTimeout(this._candidateTimer);this._wizardSelection = new Set(this._config.entities.map(e => e.entity_id));
     this._delayDrafts = new Map();
     this._builderRoom=this._config.rooms[0]?.name||"";this._builderSystem="";this._builderSelection=new Set();this._search="";
     this._roomDeletion=null;
@@ -799,7 +799,7 @@ export class NativePanelEditor extends BaseElement {
     else if(el.id==="builder-room") {this._roomDeletion=null;this._builderRoom=el.value;this._room=el.value;this._previewPage=0;this._sensorPreviewPage=0;const room=this._config.rooms.find(r=>r.name===el.value);this._builderScope=room?.area_id?"room":"all";this._builderSelection=new Set();this._builderAssignments={};this._builderSystem="";this._editingEntity="";this._inspector="preview";this._pickerOpen=false;this._roomSystemAdd=false;this._saveDraft();this._render();}
     else if(el.id==="show-all-assigned") {this._showAllAssigned=el.checked;this._render();}
     else if(el.id==="builder-system") {this._builderSystem=el.value;this._renderCandidates();}
-    else if(el.id==="builder-scope") {this._builderScope=el.value;this._renderCandidates();this._saveDraft();}
+    else if(el.id==="builder-scope") {this._builderScope=el.value;this._candidateLimit=60;this._renderCandidates();this._saveDraft();}
     else if(el.dataset.builderEntity) {if(el.checked)this._builderSelection.add(el.dataset.builderEntity);else this._builderSelection.delete(el.dataset.builderEntity);this._updateAddButton();this._saveDraft();}
     else if(el.dataset.systemPersistent!==undefined) {const system=this._config.systems[Number(el.dataset.systemPersistent)];system.persistent=el.checked;if(!el.checked)for(const room of this._config.rooms)if(this._config.entities.some(e=>e.room===room.name&&entitySystems(e).includes(system.name))&&!room.systems.includes(system.name))room.systems.push(system.name);this._mark();}
     else if (el.id === "panel-select") {
@@ -1004,7 +1004,7 @@ export class NativePanelEditor extends BaseElement {
       this._builderRoom=roomName;this._builderSystem=systemName;
       notice="Alarm added to this draft. Publish to show its keypad and arm controls on the panel.";
     } else if(action==="builder-add-entities") {
-      const assignments=Object.fromEntries([...this._builderSelection].map(id=>[id,this._assignmentFor(this._source(id))]));
+      const available=systemCatalog(this._config,this._data.entities).filter(item=>item.enabled||!item.configured).map(item=>item.name),assignments=Object.fromEntries([...this._builderSelection].map(id=>[id,this._assignmentFor(this._source(id),available)]));
       this._config=addReviewedControls(this._config,this._data.entities,[...this._builderSelection],this._builderRoom,assignments);this._pickerOpen=false;
       this._builderSelection=new Set();this._builderAssignments={};
     } else if(action==="builder-clear-selection") {
@@ -1098,7 +1098,8 @@ export class NativePanelEditor extends BaseElement {
     else if(action==="workspace-back-room"){this.shadowRoot.querySelector(".room-content")?.scrollIntoView?.({block:"start"});this.shadowRoot.querySelector(".room-heading button")?.focus?.({preventScroll:true});return;}
     else if(action==="workspace-room-options")this._roomOptions=!this._roomOptions;
     else if(action==="workspace-system-options")this._editingRoomSystem=this._editingRoomSystem===system?"":system;
-    else if(action==="workspace-add-controls"){this._pickerOpen=true;this._builderSystem=system||"";}
+    else if(action==="workspace-add-controls"){this._pickerOpen=true;this._candidateLimit=60;this._builderSystem=system||"";}
+    else if(action==="workspace-more-candidates"){this._candidateLimit=(this._candidateLimit||60)+60;this._renderCandidates();this.shadowRoot.querySelector('[data-action="workspace-more-candidates"]')?.focus?.({preventScroll:true});return;}
     else if(action==="workspace-close-picker"){this._pickerOpen=false;this._builderSelection=new Set();this._builderAssignments={};}
     else if(action==="workspace-add-system"){this._roomSystemAdd=true;this._roomSystemChoice="";this._roomSystemName="";}
     else if(action==="workspace-cancel-system")this._roomSystemAdd=false;
@@ -1118,17 +1119,32 @@ export class NativePanelEditor extends BaseElement {
       if(this.clientWidth<=1150||globalThis.matchMedia?.("(max-width:960px)")?.matches)this.shadowRoot?.querySelector?.(".context-pane")?.scrollIntoView?.({block:"start"});
     } else if(action==="workspace-add-controls")this.shadowRoot?.querySelector?.("#entity-search")?.focus?.();
   }
-  _assignmentFor(source) {
-    const available=systemCatalog(this._config,this._data.entities).filter(item=>item.enabled||!item.configured).map(item=>item.name);if(Object.hasOwn(this._builderAssignments||{},source.entity_id)){const value=this._builderAssignments[source.entity_id];return available.includes(value)?value:"";}return this._builderSystem&&available.includes(this._builderSystem)?this._builderSystem:available.includes(source.system)?source.system:"";
+  _queueCandidateSearch(value) {
+    this._search=value;this._candidateLimit=60;clearTimeout(this._candidateTimer);
+    this.shadowRoot?.querySelector("#candidates")?.setAttribute?.("aria-busy","true");
+    this._candidateTimer=setTimeout(()=>this._renderCandidates(),160);
   }
-  _updateAddButton() {
-    const selected=[...(this._builderSelection||[])],button=this.shadowRoot?.querySelector('[data-action="builder-add-entities"]');if(button)button.disabled=!selected.length||selected.some(id=>!this._assignmentFor(this._source(id)));
+  _assignmentFor(source,available) {
+    available ||= systemCatalog(this._config,this._data.entities).filter(item=>item.enabled||!item.configured).map(item=>item.name);
+    if(Object.hasOwn(this._builderAssignments||{},source.entity_id)){const value=this._builderAssignments[source.entity_id];return available.includes(value)?value:"";}
+    return this._builderSystem&&available.includes(this._builderSystem)?this._builderSystem:available.includes(source.system)?source.system:"";
+  }
+  _updateAddButton(available) {
+    const selected=[...(this._builderSelection||[])],button=this.shadowRoot?.querySelector('[data-action="builder-add-entities"]');
+    if(button){available ||= systemCatalog(this._config,this._data.entities).filter(item=>item.enabled||!item.configured).map(item=>item.name);const sources=new Map(this._data.entities.map(source=>[source.entity_id,source]));button.disabled=!selected.length||selected.some(id=>!sources.has(id)||!this._assignmentFor(sources.get(id),available));}
     const count=this.shadowRoot?.querySelector("#candidate-count");if(count)count.textContent=`${selected.length} selected to add. Choose a system for each entity; Add confirms any required enabling and room links.`;
   }
   _renderCandidates() {
+    clearTimeout(this._candidateTimer);this._candidateTimer=null;
     const root=this.shadowRoot?.querySelector("#candidates");if(!root)return;
-    const room=this._config.rooms.find(r=>r.name===this._builderRoom),entities=candidatesForRoom(this._data.entities,room,this._builderScope,this._search),available=systemCatalog(this._config,this._data.entities).filter(item=>item.enabled||!item.configured).map(item=>item.name);
-    root.innerHTML=`<p class="hint" id="candidate-count"></p><p class="hint">${entities.length} matching. New system links or enabling are applied only when you Add selected controls.</p><div class="candidate-list">${entities.map(source=>{const assigned=this._config.entities.find(e=>e.entity_id===source.entity_id);return `<div class="candidate"><label class="candidate-choice"><input type="checkbox" data-builder-entity="${escapeHTML(source.entity_id)}" ${this._builderSelection?.has(source.entity_id)?"checked":""} ${assigned?"disabled":""}><span><strong>${escapeHTML(source.name||source.entity_id)}</strong><small>${escapeHTML(source.entity_id)} · ${escapeHTML(source.room||"Unassigned")}</small>${assigned?`<small>Already assigned to ${escapeHTML(assigned.room)} / ${escapeHTML(assigned.system)}. Edit its assignment; it will not be duplicated.</small>`:""}</span></label>${assigned?`<button data-action="workspace-edit-existing" data-entity="${escapeHTML(assigned.entity_id)}">Edit assignment</button>`:`<label class="field candidate-system"><span>System</span><select aria-label="System for ${escapeHTML(source.name||source.entity_id)}" data-builder-assignment="${escapeHTML(source.entity_id)}">${this._option("","Choose system",this._assignmentFor(source))}${available.map(name=>this._option(name,`${roomSystemCaption(this._config,this._builderRoom,name)}${!systemsForRoom(this._config,this._builderRoom).includes(name)?" · enable/link":""}`,this._assignmentFor(source))).join("")}</select></label>`}</div>`;}).join("")||"<p>No matching entities. Change the source filter or search.</p>"}</div>`;this._updateAddButton();
+    const room=this._config.rooms.find(r=>r.name===this._builderRoom),entities=candidatesForRoom(this._data.entities,room,this._builderScope,this._search),available=systemCatalog(this._config,this._data.entities).filter(item=>item.enabled||!item.configured).map(item=>item.name),linked=new Set(systemsForRoom(this._config,this._builderRoom)),assigned=new Map(this._config.entities.map(entity=>[entity.entity_id,entity]));
+    const captions=new Map(available.map(name=>[name,`${roomSystemCaption(this._config,this._builderRoom,name)}${!linked.has(name)?" · enable/link":""}`])),visible=entities.slice(0,this._candidateLimit||60);
+    root.setAttribute?.("aria-busy","false");
+    root.innerHTML=`<p class="hint" id="candidate-count"></p><p class="hint" role="status">${entities.length} matching · showing ${visible.length}. Search covers all HA entities; selections stay when you change the search.</p><div class="candidate-list">${visible.map(source=>{
+      const existing=assigned.get(source.entity_id),assignment=this._assignmentFor(source,available);
+      return `<div class="candidate"><label class="candidate-choice"><input type="checkbox" data-builder-entity="${escapeHTML(source.entity_id)}" ${this._builderSelection?.has(source.entity_id)?"checked":""} ${existing?"disabled":""}><span><strong>${escapeHTML(source.name||source.entity_id)}</strong><small>${escapeHTML(source.entity_id)} · ${escapeHTML(source.room||"Unassigned")}</small>${existing?`<small>Already assigned to ${escapeHTML(existing.room)} / ${escapeHTML(existing.system)}. Edit its assignment; it will not be duplicated.</small>`:""}</span></label>${existing?`<button data-action="workspace-edit-existing" data-entity="${escapeHTML(existing.entity_id)}">Edit assignment</button>`:`<label class="field candidate-system"><span>System</span><select aria-label="System for ${escapeHTML(source.name||source.entity_id)}" data-builder-assignment="${escapeHTML(source.entity_id)}">${this._option("","Choose system",assignment)}${available.map(name=>this._option(name,captions.get(name),assignment)).join("")}</select></label>`}</div>`;
+    }).join("")||"<p>No matching entities. Change the source filter or search.</p>"}</div>${visible.length<entities.length?`<button data-action="workspace-more-candidates">Show ${Math.min(60,entities.length-visible.length)} more</button>`:""}`;
+    this._updateAddButton(available);
   }
 
   _source(entityId) { return this._data.entities.find(e=>e.entity_id===entityId) || {entity_id:entityId,name:entityId}; }
@@ -1444,6 +1460,6 @@ const CSS = `
 
 `;
 if(globalThis.customElements) {
-  if(!customElements.get("native-panel-editor-0-7-11"))customElements.define("native-panel-editor-0-7-11",NativePanelEditor);
+  if(!customElements.get("native-panel-editor-0-7-12"))customElements.define("native-panel-editor-0-7-12",NativePanelEditor);
   if(!customElements.get("native-panel-editor"))customElements.define("native-panel-editor",class extends NativePanelEditor {});
 }

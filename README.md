@@ -1,6 +1,6 @@
 # Set up a Home Panel without AI
 
-Companion 0.7.11 · Elecrow Advanced 10.1-inch ESP32-P4 V1.2 / 1024×600 only.
+Companion 0.7.12 · Elecrow Advanced 10.1-inch ESP32-P4 V1.2 / 1024×600 only.
 
 This companion update changes the configuration editor, not the tablet dashboard. You configure existing Home Assistant entities; the app does not discover or provision your lights, alarm or other equipment into Home Assistant for you.
 
@@ -47,6 +47,10 @@ Do not describe the complete clean-install product as validated yet. No new firm
 6. **Systems tab:** manage global categories and visibility in every room. Persistent tabs keep room-specific controls. Global Disable removes that system's placements throughout the panel after impact review. Re-enabling does not restore removed placements.
 7. **Other settings:** configure Security, Alerts, Schedules, Layout, Theme and Photo screensaver. Preview is read-only and sends no device commands. Local Wi-Fi and screen settings remain on the touchscreen.
 8. **Review & publish:** inspect the changes, then Publish to panel. Local drafts belong to this browser; publishing stores the configuration in HA for this tablet. Do not clear browser storage before publishing an important draft.
+
+## Searching a large Home Assistant installation
+
+The entity picker initially displays60 matches. Search covers the full HA entity catalog; Show more reveals another60 rows. Selected entities remain selected when a search hides them. System choices are computed once for each result batch, and search updates shortly after typing pauses. The existing64 configured-control limit on the tablet is unchanged.
 
 ## Firmware compatibility
 
