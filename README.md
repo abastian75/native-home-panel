@@ -6,9 +6,18 @@ The companion configures your tablet; firmware 0.9.13 adds square adaptive tiles
 
 ## Release status
 
-This is a development release of the Home Assistant companion. Install it through a HACS custom repository or manually. It is not part of the default HACS catalog. This repository contains the companion only; firmware binaries are not included. The existing credential-free 0.9.8 factory package is available separately, but erased-board startup, C6 compatibility, Wi-Fi onboarding and recovery on a spare panel still need a physical test. A later experimental firmware failed startup on the development tablet and was rolled back. Do not install held 0.9.9 or staged 0.9.10 firmware. The configured development tablet now boots 0.9.13 with rendering and HA synchronization confirmed; this is not a clean-board installation test.
+This is a development release of the Home Assistant companion. Install it through a HACS custom repository or manually. It is not part of the default HACS catalog. The repository tree contains the companion. Credential-free firmware 0.9.13, firmware source, and an illustrated 24-page PDF/offline HTML manual are available as assets of the separate [firmware development prerelease](https://github.com/abastian75/native-home-panel/releases/tag/firmware-v0.9.13). Erased-board startup, stock C6 compatibility, Wi-Fi onboarding, real web OTA and USB recovery on a spare panel still need a physical test. A later experimental firmware failed startup on the development tablet and was rolled back. Do not install held 0.9.9 or staged 0.9.10 firmware. The configured development tablet now boots 0.9.13 with rendering and HA synchronization confirmed; this is not a clean-board installation test.
 
 Do not describe the complete clean-install product as validated yet. No new firmware is included in the companion ZIP.
+
+### Firmware and illustrated manual
+
+- [Read the 24-page manual (PDF)](https://github.com/abastian75/native-home-panel/releases/download/firmware-v0.9.13/Home-Panel-User-Guide.pdf)
+- [Download the offline illustrated guide (PDF + HTML)](https://github.com/abastian75/native-home-panel/releases/download/firmware-v0.9.13/Home-Panel-User-Guide-0.9.13.zip)
+- [Download the clean-install firmware package, source and checksums](https://github.com/abastian75/native-home-panel/releases/download/firmware-v0.9.13/Elecrow-Advanced10-P4-Clean-Install-0.9.13.zip)
+
+Only Elecrow Advanced 10.1-inch P4 V1.2, 1024x600, 16 MB, engineering-sample P4 silicon 0.x/1.x (image maximum 1.99). The factory image is for initial USB installation; the OTA image is for later updates on the generic factory-mode firmware. The package updates P4 only and requires a compatible C6 ESP-Hosted SDIO radio. Read the manual and preserve the original firmware before flashing. No private, already-configured tablet image is distributed.
+
 
 ## 1. Install the companion
 
@@ -54,7 +63,7 @@ The entity picker initially displays 60 matches. Search covers the full HA entit
 
 ## Firmware compatibility
 
-Normal room/system editing uses the existing tablet interface. Hiding All systems and using several systems for one entity require firmware advertising those features; older firmware blocks publishing those options with a clear message. The current 0.9.8 clean-install image does not provide them. Do not bypass the guard or install an unvalidated experimental image to enable them.
+Normal room/system editing uses the existing tablet interface. Hiding All systems and using several systems for one entity require firmware advertising those features; older firmware blocks publishing those options with a clear message. The clean-install 0.9.13 development candidate advertises these features, but fresh-board physical validation remains pending. Do not bypass the firmware capability guard.
 
 ## Troubleshooting
 
