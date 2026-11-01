@@ -1,0 +1,1 @@
+{"config":{"step":{"user":{"title":"Native Home Panel","description":"Set up the local panel editor. Open Native Panel in the sidebar, generate a pairing code, and enter it on the touchscreen. Pair only on a trusted local network; HTTP pairing is not encrypted."}},"abort":{"already_configured":"Native Home Panel is already configured."}}}
