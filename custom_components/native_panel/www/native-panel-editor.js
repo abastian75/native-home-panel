@@ -43,6 +43,7 @@ export function firmwareFeatureErrors(config,capabilities=[]) {
   const errors=[];
   if(config.menu?.show_all_systems===false&&!capabilities.includes("hide_all_systems"))errors.push("Update touchscreen firmware before hiding All systems. This draft stays saved locally.");
   if(config.entities?.some(entity=>entity.additional_systems?.length)&&!capabilities.includes("system_memberships"))errors.push("Update touchscreen firmware before using additional systems. This draft stays saved locally.");
+  if((config.schedules||[]).some(rule=>[rule.on_time,rule.off_time].some(value=>typeof value==="string"&&value.startsWith("sunset")))&&!capabilities.includes("sunset_schedules"))errors.push("Update touchscreen firmware before using sunset schedules. This draft stays saved locally.");
   return errors;
 }
 export function normalizeConfig(value) {
@@ -215,6 +216,16 @@ export function createAlert(source, id) {
   const stableId = id || globalThis.crypto?.randomUUID?.() || `alert-${Date.now().toString(36)}-${Math.random().toString(36).slice(2,10)}`;
   return {id:stableId,entity_id:source?.entity_id || "",label:defaultLabel(source?.name || source?.entity_id || "New alert"),condition:source?.entity_id?.startsWith("binary_sensor.") || source?.entity_id?.startsWith("cover.") ? "open" : "on",delay_seconds:0,enabled:true};
 }
+export function scheduleTrigger(value="") {
+  if(typeof value!=="string")return {mode:"time",offset:""};
+  if(value==="sunset")return {mode:"sunset",offset:""};
+  if(value.startsWith("sunset-")||value.startsWith("sunset+"))return {mode:value[6]==="-"?"before":"after",offset:value.slice(7)};
+  return {mode:"time",offset:""};
+}
+export function validScheduleTrigger(value) {
+  if(typeof value!=="string")return false;
+  return /^([01]\d|2[0-3]):[0-5]\d$/.test(value)||value==="sunset"||/^sunset[+-][1-9]\d{0,2}$/.test(value)&&Number(value.slice(7))<=720;
+}
 export function createSchedule(id) {
   return {id:id||`schedule-${globalThis.crypto?.randomUUID?.().replaceAll("-","").slice(0,22)||Math.random().toString(36).slice(2,14)}`,name:"New schedule",enabled:true,kind:"weekly",weekdays:[0,1,2,3,4],start_date:"",end_date:"",on_time:"08:00",off_time:"20:00"};
 }
@@ -243,7 +254,7 @@ export function validateSchedules(config) {
     if(typeof rule.enabled!=="boolean")errors.push("Schedule enabled must be on or off.");
     if(!["weekly","once","range"].includes(rule.kind))errors.push("Choose a weekly, once or date-range schedule.");
     if(!Array.isArray(rule.weekdays)||rule.weekdays.some(day=>!Number.isInteger(day)||day<0||day>6)||new Set(rule.weekdays).size!==rule.weekdays.length||rule.kind!=="once"&&!rule.weekdays.length)errors.push("Choose at least one weekday for weekly and date-range schedules.");
-    if(!/^([01]\d|2[0-3]):[0-5]\d$/.test(rule.on_time||"")||!/^([01]\d|2[0-3]):[0-5]\d$/.test(rule.off_time||"")||rule.on_time===rule.off_time)errors.push("Choose different on and off times in HH:MM format.");
+    if(!validScheduleTrigger(rule.on_time)||!validScheduleTrigger(rule.off_time)||rule.on_time===rule.off_time)errors.push("Choose different on/off triggers: a time, sunset, or1–720minutes before/after sunset.");
     if(rule.kind==="weekly"&&(rule.start_date!==""||rule.end_date!==""))errors.push("Weekly schedules do not use dates.");
     if(rule.kind!=="weekly"&&(!validDate(rule.start_date)||!validDate(rule.end_date)||rule.end_date<rule.start_date||rule.kind==="once"&&rule.start_date!==rule.end_date))errors.push("Choose valid schedule dates; once uses one date and date ranges must end on or after the start.");
   }
@@ -667,6 +678,11 @@ export class NativePanelEditor extends BaseElement {
   }
   _storeScheduleField(el) {
     const schedule=this._config.schedules[Number(el.dataset.index)],field=el.dataset.scheduleField;
+    if(field.endsWith("_mode")) {
+      const key=field.slice(0,-5),old=scheduleTrigger(schedule[key]);
+      schedule[key]=el.value==="time"?(key==="on_time"?"08:00":"20:00"):el.value==="sunset"?"sunset":`sunset${el.value==="before"?"-":"+"}${old.offset||30}`;return;
+    }
+    if(field.endsWith("_offset")){const key=field.slice(0,-7);schedule[key]=`sunset${scheduleTrigger(schedule[key]).mode==="before"?"-":"+"}${el.value}`;return;}
     schedule[field]=el.type==="checkbox"?el.checked:el.value;
     if(field==="kind") {
       if(schedule.kind==="weekly"){schedule.start_date="";schedule.end_date="";}
@@ -1206,10 +1222,11 @@ export class NativePanelEditor extends BaseElement {
   _schedules() {
     const timezone=this._data.time_zone||this._hass?.config?.time_zone||"Not reported by Home Assistant";
     const weekdays=["Monday","Tuesday","Wednesday","Thursday","Friday","Saturday","Sunday"];
-    return `<div class="section-title"><div><h2>Schedules</h2><p>Home Assistant time zone: <strong>${escapeHTML(timezone)}</strong></p></div><button data-action="add-schedule" ${this._config.schedules.length>=32?"disabled":""}>Create schedule</button></div><p>Schedules run in Home Assistant, independently of panel power. Create a rule here, then assign it under a control's Schedules options in Rooms.</p><p class="hint">Rules are independent: overlapping rules can send opposing actions. An off time before the on time means the following day. Missed times while Home Assistant is offline are not replayed. Creating, editing and assigning never triggers a device immediately.</p>${!this._config.schedules.length?'<p>No schedules configured. Nothing is automatically assigned.</p>':`<ol class="entity-list">${this._config.schedules.map((rule,i)=>{
+    return `<div class="section-title"><div><h2>Schedules</h2><p>Home Assistant time zone: <strong>${escapeHTML(timezone)}</strong></p></div><button data-action="add-schedule" ${this._config.schedules.length>=32?"disabled":""}>Create schedule</button></div><p>Schedules run in Home Assistant, independently of panel power. Create a rule here, then assign it under a control's Schedules options in Rooms.</p><p class="hint">Rules are independent: overlapping rules can send opposing actions. The off trigger runs after on, rolling to the next day when needed. Sunset follows Home Assistant’s configured location, at minute precision. Missed times while Home Assistant is offline are not replayed. Creating, editing and assigning never triggers a device immediately.</p>${!this._config.schedules.length?'<p>No schedules configured. Nothing is automatically assigned.</p>':`<ol class="entity-list">${this._config.schedules.map((rule,i)=>{
       const input=(label,key,type="text",extra="")=>`<label class="field"><span>${label}</span><input aria-label="${label} for schedule ${i+1}" type="${type}" data-schedule-field="${key}" data-index="${i}" value="${escapeHTML(rule[key])}" ${extra}></label>`;
+      const trigger=(label,key)=>{const choice=scheduleTrigger(rule[key]);return `<div><label class="field"><span>${label} trigger</span><select aria-label="${label} trigger for schedule ${i+1}" data-schedule-field="${key}_mode" data-index="${i}">${[["time","Fixed time"],["sunset","At sunset"],["before","Before sunset"],["after","After sunset"]].map(([mode,caption])=>this._option(mode,caption,choice.mode)).join("")}</select></label>${choice.mode==="time"?input(label+" time",key,"time",'step="60"'):["before","after"].includes(choice.mode)?`<label class="field"><span>Minutes ${choice.mode} sunset</span><input aria-label="${label} minutes ${choice.mode} sunset for schedule ${i+1}" type="number" min="1" max="720" step="1" data-schedule-field="${key}_offset" data-index="${i}" value="${escapeHTML(choice.offset)}"></label>`:""}</div>`;};
       const count=this._config.entities.filter(entity=>entity.schedule_ids?.includes(rule.id)).length;
-      return `<li><div class="entity-top"><h3>${escapeHTML(rule.name||"New schedule")}</h3><button class="danger" data-action="delete-schedule" data-index="${i}" aria-label="Delete schedule ${i+1}">Delete schedule</button></div>${input("Schedule name","name","text",'maxlength="63"')}<label class="field"><span>Repeat</span><select aria-label="Repeat for schedule ${i+1}" data-schedule-field="kind" data-index="${i}">${[["weekly","Weekly"],["once","Once"],["range","Date range"]].map(([value,label])=>this._option(value,label,rule.kind)).join("")}</select></label>${rule.kind!=="weekly"?`<div class="entity-fields">${input(rule.kind==="once"?"Date":"Start date","start_date","date")}${rule.kind==="range"?input("End date","end_date","date"):""}</div>`:""}${rule.kind!=="once"?`<fieldset class="schedule-days"><legend>Run on</legend>${weekdays.map((day,index)=>`<label class="checkbox-field"><input type="checkbox" aria-label="${day} for schedule ${i+1}" data-schedule-weekday="${index}" data-index="${i}" ${rule.weekdays.includes(index)?"checked":""}>${day}</label>`).join("")}</fieldset>`:""}<div class="entity-fields">${input("On / open time","on_time","time",'step="60"')}${input("Off / close time","off_time","time",'step="60"')}</div><label class="checkbox-field"><input type="checkbox" data-schedule-field="enabled" data-index="${i}" ${rule.enabled?"checked":""}>Enable ${escapeHTML(rule.name||"this schedule")}</label><p class="hint">${count} control${count===1?"":"s"} assigned · ${escapeHTML(rule.id)}${rule.off_time<rule.on_time?" · Off / close runs on the following day":""}</p></li>`;
+      return `<li><div class="entity-top"><h3>${escapeHTML(rule.name||"New schedule")}</h3><button class="danger" data-action="delete-schedule" data-index="${i}" aria-label="Delete schedule ${i+1}">Delete schedule</button></div>${input("Schedule name","name","text",'maxlength="63"')}<label class="field"><span>Repeat</span><select aria-label="Repeat for schedule ${i+1}" data-schedule-field="kind" data-index="${i}">${[["weekly","Weekly"],["once","Once"],["range","Date range"]].map(([value,label])=>this._option(value,label,rule.kind)).join("")}</select></label>${rule.kind!=="weekly"?`<div class="entity-fields">${input(rule.kind==="once"?"Date":"Start date","start_date","date")}${rule.kind==="range"?input("End date","end_date","date"):""}</div>`:""}${rule.kind!=="once"?`<fieldset class="schedule-days"><legend>Run on</legend>${weekdays.map((day,index)=>`<label class="checkbox-field"><input type="checkbox" aria-label="${day} for schedule ${i+1}" data-schedule-weekday="${index}" data-index="${i}" ${rule.weekdays.includes(index)?"checked":""}>${day}</label>`).join("")}</fieldset>`:""}<div class="entity-fields">${trigger("On / open","on_time")}${trigger("Off / close","off_time")}</div><label class="checkbox-field"><input type="checkbox" data-schedule-field="enabled" data-index="${i}" ${rule.enabled?"checked":""}>Enable ${escapeHTML(rule.name||"this schedule")}</label><p class="hint">${count} control${count===1?"":"s"} assigned · ${escapeHTML(rule.id)}${scheduleTrigger(rule.on_time).mode==="time"&&scheduleTrigger(rule.off_time).mode==="time"&&rule.off_time<rule.on_time?" · Off / close runs on the following day":""}</p></li>`;
     }).join("")}</ol>`}`;
   }
   _layout() {
@@ -1476,6 +1493,6 @@ const CSS = `
 
 `;
 if(globalThis.customElements) {
-  if(!customElements.get("native-panel-editor-0-7-15"))customElements.define("native-panel-editor-0-7-15",NativePanelEditor);
+  if(!customElements.get("native-panel-editor-0-7-16"))customElements.define("native-panel-editor-0-7-16",NativePanelEditor);
   if(!customElements.get("native-panel-editor"))customElements.define("native-panel-editor",class extends NativePanelEditor {});
 }

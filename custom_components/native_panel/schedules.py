@@ -5,6 +5,7 @@ import asyncio
 from datetime import date, datetime, timedelta, timezone
 import hashlib
 import json
+import math
 import re
 from zoneinfo import ZoneInfo
 
@@ -12,6 +13,13 @@ SCHEDULE_DOMAINS = {"light", "switch", "fan", "cover", "climate"}
 ID_RE = re.compile(r"^[A-Za-z0-9_-]{1,32}$")
 TIME_RE = re.compile(r"^(?:[01][0-9]|2[0-3]):[0-5][0-9]$")
 DATE_RE = re.compile(r"^[0-9]{4}-[0-9]{2}-[0-9]{2}$")
+
+
+def valid_trigger(value):
+    if not isinstance(value, str): return False
+    if TIME_RE.fullmatch(value) or value == "sunset": return True
+    match = re.fullmatch(r"sunset([+-])([1-9][0-9]{0,2})", value)
+    return bool(match and int(match[2]) <= 720)
 
 
 def normalize_schedule(raw):
@@ -39,8 +47,8 @@ def normalize_schedule(raw):
             raise ValueError("Use valid YYYY-MM-DD dates") from None
         if first > last or kind == "once" and first != last: raise ValueError("Once uses one date; range end must not precede start")
     on, off = raw.get("on_time"), raw.get("off_time")
-    if not isinstance(on, str) or not isinstance(off, str) or not TIME_RE.fullmatch(on) or not TIME_RE.fullmatch(off) or on == off:
-        raise ValueError("Use different on/off times in HH:MM format")
+    if not valid_trigger(on) or not valid_trigger(off) or on == off:
+        raise ValueError("Use different on/off triggers: HH:MM or sunset with an offset up to720minutes")
     return {"id": sid, "name": name, "enabled": enabled, "kind": kind, "weekdays": sorted(weekdays), "start_date": start, "end_date": end, "on_time": on, "off_time": off}
 
 
@@ -62,15 +70,49 @@ def eligible_on_date(schedule, day):
     return day.weekday() in schedule["weekdays"] and (schedule["kind"] == "weekly" or schedule["start_date"] <= iso <= schedule["end_date"])
 
 
-def due_edges(schedule, local_now):
+def due_edges(schedule, local_now, sunset_for_date=None):
     """Only this minute; overnight off belongs to the previous on date."""
     if not schedule.get("enabled", True): return []
+    if any(schedule[edge + "_time"].startswith("sunset") for edge in ("on", "off")):
+        if sunset_for_date is None: return []
+        return solar_edges(schedule, local_now, sunset_for_date)
     current = local_now.strftime("%H:%M")
     result = []
     if current == schedule["on_time"] and eligible_on_date(schedule, local_now.date()): result.append(("on", local_now.date()))
     if current == schedule["off_time"]:
         anchor = local_now.date() - timedelta(days=1 if schedule["off_time"] < schedule["on_time"] else 0)
         if eligible_on_date(schedule, anchor): result.append(("off", anchor))
+    return result
+
+
+def resolve_trigger(value, day, zone, sunset_for_date):
+    if value.startswith("sunset"):
+        event = sunset_for_date(day)
+        if event is None: return None
+        offset = int(value[6:] or "0")
+        # Solar events have seconds; use the first minute tick at/after the event.
+        return datetime.fromtimestamp(math.ceil((event.timestamp() + offset * 60) / 60) * 60, timezone.utc)
+    hour, minute = map(int, value.split(":"))
+    local = datetime(day.year, day.month, day.day, hour, minute, tzinfo=zone)
+    utc = local.astimezone(timezone.utc)
+    return utc if utc.astimezone(zone).replace(tzinfo=None) == local.replace(tzinfo=None) else None
+
+
+def solar_edges(schedule, local_now, sunset_for_date):
+    result = []
+    now = local_now.astimezone(timezone.utc).replace(second=0, microsecond=0)
+    # An offset may cross midnight; an overnight off may be two dates later.
+    for delta in (-2, -1, 0, 1):
+        anchor = local_now.date() + timedelta(days=delta)
+        if not eligible_on_date(schedule, anchor): continue
+        on = resolve_trigger(schedule["on_time"], anchor, local_now.tzinfo, sunset_for_date)
+        if on is None: continue
+        off = resolve_trigger(schedule["off_time"], anchor, local_now.tzinfo, sunset_for_date)
+        for next_day in (1, 2):
+            if off is not None and off > on: break
+            off = resolve_trigger(schedule["off_time"], anchor + timedelta(days=next_day), local_now.tzinfo, sunset_for_date)
+        if on == now: result.append(("on", anchor))
+        if off is not None and off > on and off == now: result.append(("off", anchor))
     return result
 
 
@@ -91,11 +133,16 @@ def clock_metadata(hass):
 
 
 class ScheduleEngine:
-    def __init__(self, hub, clock=None):
+    def __init__(self, hub, clock=None, sunset_for_date=None):
         self.hub = hub
         self.clock = clock or (lambda: datetime.now(timezone.utc))
         self.started_at = self.clock().timestamp()
         self.lock = asyncio.Lock()
+        self.sunset_for_date = sunset_for_date or self.ha_sunset
+
+    def ha_sunset(self, day):
+        from homeassistant.helpers.sun import get_astral_event_date
+        return get_astral_event_date(self.hub.hass, "sunset", day)
 
     def current_minute(self, now):
         return self.clock().astimezone(now.tzinfo).replace(second=0, microsecond=0) == now.replace(second=0, microsecond=0)
@@ -104,9 +151,13 @@ class ScheduleEngine:
         """Called by HA's local-time minute helper, never by save or bind."""
         if now.tzinfo is None or not self.hub.active or self.lock.locked() or not self.current_minute(now) or self.started_at >= now.replace(second=0, microsecond=0).timestamp(): return
         async with self.lock:
+            sunsets = {}
+            def sunset(day):
+                if day not in sunsets: sunsets[day] = self.sunset_for_date(day)
+                return sunsets[day]
             for device_id in list(self.hub.panels):
                 config = self.hub.panels[device_id]["config"]
-                candidates = [(item["entity_id"], schedule["id"], edge, anchor) for schedule in config.get("schedules", []) for edge, anchor in due_edges(schedule, now) for item in config["entities"] if schedule["id"] in item.get("schedule_ids", [])]
+                candidates = [(item["entity_id"], schedule["id"], edge, anchor) for schedule in config.get("schedules", []) for edge, anchor in due_edges(schedule, now, sunset) for item in config["entities"] if schedule["id"] in item.get("schedule_ids", [])]
                 for entity_id, sid, edge, anchor in candidates:
                     if not self.hub.active or not self.current_minute(now): return
                     async with self.hub.sync_locks.setdefault(device_id, asyncio.Lock()):
@@ -115,7 +166,7 @@ class ScheduleEngine:
                         if armed_after >= now.replace(second=0, microsecond=0).timestamp(): continue
                         item = next((item for item in record["config"]["entities"] if item["entity_id"] == entity_id and sid in item.get("schedule_ids", [])), None)
                         schedule = next((schedule for schedule in record["config"].get("schedules", []) if schedule["id"] == sid), None)
-                        if item is None or schedule is None or (edge, anchor) not in due_edges(schedule, now): continue
+                        if item is None or schedule is None or (edge, anchor) not in due_edges(schedule, now, sunset): continue
                         # A changed future wall time is a new edge; DST repeats
                         # of that same local date/time must never run twice.
                         key = hashlib.sha256(f"{anchor.isoformat()}|{sid}|{entity_id}|{edge}|{schedule[edge + '_time']}".encode()).hexdigest()

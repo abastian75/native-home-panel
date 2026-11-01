@@ -1,12 +1,12 @@
 # Set up a Home Panel without AI
 
-Companion 0.7.15 · Elecrow Advanced 10.1-inch ESP32-P4 V1.2 / 1024×600 only.
+Companion 0.7.16 · Elecrow Advanced 10.1-inch ESP32-P4 V1.2 / 1024×600 only.
 
-The companion configures your tablet; firmware 0.9.12 adds square adaptive tiles alongside the existing thermostat and menus. You configure existing Home Assistant entities; the app does not discover or provision your lights, alarm or other equipment into Home Assistant for you.
+The companion configures your tablet; firmware 0.9.13 adds square adaptive tiles alongside the existing thermostat and menus. You configure existing Home Assistant entities; the app does not discover or provision your lights, alarm or other equipment into Home Assistant for you.
 
 ## Release status
 
-This is a development release of the Home Assistant companion. Install it through a HACS custom repository or manually. It is not part of the default HACS catalog. This repository contains the companion only; firmware binaries are not included. The existing credential-free 0.9.8 factory package is available separately, but erased-board startup, C6 compatibility, Wi-Fi onboarding and recovery on a spare panel still need a physical test. A later experimental firmware failed startup on the development tablet and was rolled back. Do not install held 0.9.9 or staged 0.9.10 firmware. The configured development tablet now boots 0.9.12 with rendering and HA synchronization confirmed; this is not a clean-board installation test.
+This is a development release of the Home Assistant companion. Install it through a HACS custom repository or manually. It is not part of the default HACS catalog. This repository contains the companion only; firmware binaries are not included. The existing credential-free 0.9.8 factory package is available separately, but erased-board startup, C6 compatibility, Wi-Fi onboarding and recovery on a spare panel still need a physical test. A later experimental firmware failed startup on the development tablet and was rolled back. Do not install held 0.9.9 or staged 0.9.10 firmware. The configured development tablet now boots 0.9.13 with rendering and HA synchronization confirmed; this is not a clean-board installation test.
 
 Do not describe the complete clean-install product as validated yet. No new firmware is included in the companion ZIP.
 
@@ -71,12 +71,20 @@ The folder layout supports packaging one HA integration. The repository includes
 
 The remaining product gates are a spare-board clean-install/recovery test, diagnosing the original experimental boot failure, complete hardware interaction testing of new firmware features, and a complete new-user acceptance run without developer intervention. No AI should be required for the configuration steps above after a supported, validated firmware is installed.
 
-## Adaptive tiles and control order (0.7.15 / firmware 0.9.12)
+## Adaptive tiles and control order (0.7.16 / firmware 0.9.13)
 
 Drag the six-dot handle in a room's system group, or focus the handle and use the keyboard's Up/Down arrow keys. Order is shared when the same entity belongs to multiple systems. Thermostats remain featured on the left; other controls follow the saved order to their right. One thermostat plus up to six controls fits a single page. With five or six neighbors, those controls are 136px squares. Regular pages keep the four-card baseline, then shrink to squares for five through ten controls; additional pages preserve the minimum touch sizes. Cover presets remain directly available.
 
 The firmware compatibility check remains enforced. If an older tablet blocks additional systems, update it to supported firmware, then choose Refresh panels; the browser draft is retained. Review & publish is still explicit.
 
-## Compact cover and Security controls (0.7.15 /0.9.12)
+## Compact cover and Security controls (0.7.16 /0.9.13)
 
 Narrow shade tiles show name, status and three dots. Tap the tile or dots to open full cover controls. Position shortcuts use Closed (0%),25%,50%,75% and Open (100%); Stop remains available when supported. Alarm sensor names and badges use explicit14px regular text, independent of the firmware default font. Layout → Show All systems removes the aggregate menu entry without deleting individual systems or controls.
+
+## Sunset schedule triggers (0.7.16 /0.9.13)
+
+In Schedules, each On/open and Off/close trigger can use Fixed time, At sunset, Before sunset or After sunset. Choose1–720minutes for before/after; for example, On45minutes before sunset and Off at23:00. The same choices are available when editing schedules on the touchscreen.
+
+Sunset uses Home Assistant's configured latitude, longitude and elevation. Solar events run on the first minute tick at or after the calculated event plus offset. Weekdays/date ranges refer to the on trigger's base date; offsets may cross midnight. Off uses the first resolved occurrence after On. Existing fixed-time rules keep their previous overnight behavior. No sunset on a polar date means there is no corresponding solar edge; no missed events are replayed after downtime. Saving, assigning and enabling are configuration operations and do not immediately run the action.
+
+Sunset triggers require firmware0.9.13 or later; older devices keep their saved layout and show an update warning. Existing fixed-time schedules and their assignments require no migration.

@@ -338,6 +338,8 @@ class PanelHub:
             raise ValueError("Update this touchscreen firmware before hiding All systems. Your saved layout was not changed.")
         if any(entity.get("additional_systems") for entity in config["entities"]) and "system_memberships" not in capabilities:
             raise ValueError("Update this touchscreen firmware before using additional systems. Your saved layout was not changed.")
+        if any(rule[key].startswith("sunset") for rule in config.get("schedules", []) for key in ("on_time", "off_time")) and "sunset_schedules" not in capabilities:
+            raise ValueError("Update this touchscreen firmware before using sunset schedules. Your saved layout was not changed.")
         refs = config["screensaver"]["photos"] + ([config["theme"]["background_asset"]] if config["theme"].get("background_asset") else [])
         if any(asset not in record["assets"] for asset in refs):
             raise ValueError("Theme references a photo not uploaded to this panel")
@@ -417,7 +419,7 @@ class PanelHub:
         capabilities = raw.get("capabilities", [])
         if not isinstance(capabilities, list) or len(capabilities) > 8 or any(not isinstance(value, str) or len(value) > 40 for value in capabilities):
             raise ValueError("Invalid touchscreen capabilities")
-        supported = sorted(set(capabilities) & {"hide_all_systems", "system_memberships"})
+        supported = sorted(set(capabilities) & {"hide_all_systems", "system_memberships", "sunset_schedules"})
         lock = self.sync_locks.setdefault(device_id, asyncio.Lock())
         async with lock:
             record = self.record(device_id)
