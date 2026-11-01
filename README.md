@@ -50,7 +50,7 @@ Do not describe the complete clean-install product as validated yet. No new firm
 
 ## Searching a large Home Assistant installation
 
-The entity picker initially displays60 matches. Search covers the full HA entity catalog; Show more reveals another60 rows. Selected entities remain selected when a search hides them. System choices are computed once for each result batch, and search updates shortly after typing pauses. The existing64 configured-control limit on the tablet is unchanged.
+The entity picker initially displays 60 matches. Search covers the full HA entity catalog; Show more reveals another 60 rows. Selected entities remain selected when a search hides them. System choices are computed once for each result batch, and search updates shortly after typing pauses. The existing 64 configured-control limit on the tablet is unchanged.
 
 ## Firmware compatibility
 
